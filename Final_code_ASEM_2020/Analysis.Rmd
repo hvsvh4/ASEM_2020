@@ -1,0 +1,691 @@
+---
+title: "ASEM 2020 Image Recognition Analysis"
+author: "Hari VS"
+Date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  pdf_document: default
+---
+```{r include=FALSE}
+library(tidyverse)
+library(lmtest)
+library(AICcmodavg)
+library(broom)
+library(ggpubr)
+library(lsr)
+library(rstatix)
+library(knitr)
+library(cowplot)
+library(dplyr)
+library(Hmisc)
+library(FactoMineR)
+library(multcompView)
+library(lsmeans)
+library(emmeans)
+```
+
+
+```{r echo=FALSE}
+image_recog <- read.csv("Data_cleaned_person.csv")
+```
+
+Initial Summary Statistics
+```{r}
+summary(image_recog$Group)
+summary(image_recog$college)
+summary(image_recog$age)
+summary(image_recog$gender)
+summary(image_recog$task_difficulty_chr)
+summary(image_recog$attn_check)
+summary(image_recog$avg_conf)
+```
+
+The histograms shows the number of stimulis that were identified 
+correctly by the participants. X axis represents the number of correct, 
+y-axis represents the number of people in each range.
+```{r echo=FALSE}
+par(mfrow=c(2,2))
+
+hist(image_recog$exact_match_answers_sum, main = "(a) Exact Match Accuracy",
+     xlab = "No. of correct answers", ylab = "No. of participants",
+     ylim = c(0,100), xlim = c(0,25))
+
+hist(image_recog$synonym_answers_sum, main = "(b) Synonym Accuracy",
+     xlab = "No. of correct answers", ylab = "No. of participants",
+     ylim = c(0,100), xlim = c(0,25)) 
+
+hist(image_recog$present_answers_sum, main = "(c) Present Accuracy",
+     xlab = "No. of correct answers", ylab = "No. of participants",
+     ylim = c(0,100), xlim = c(0,25)) 
+
+hist(image_recog$category_answers_sum, main = "(d) Category Accuracy",
+     xlab = "No. of correct answers", ylab = "No. of participants",
+     ylim = c(0,100), xlim = c(0,25))
+
+par(mfrow=c(1,1))
+```
+
+The histrogram shows the spread of the overall average confidence rating given
+by the participants. The confidence rating is shown in 0 to 1 scale. 0 being 0%
+and 1 being 100%. The response to thestimuli is also referred in 0s and 1s,
+hence to maintain the uniformity, same scale was used for average confidence as
+well.
+```{r echo=FALSE}
+par(mfrow=c(2,2))
+
+hist(as.numeric(as.character(image_recog$avg_conf)), breaks = "FD",
+     main = "(a) Confidence Rating", xlab = "Average Confidence")
+
+round(sd(image_recog$avg_conf),2)
+```
+
+The average age of the participants was `r round(mean(image_recog$age),2)` years.
+Standard deviation = `r round(sd(image_recog$age),2)` Youngest person to take the survey was `r round(min(image_recog$age),2)` years old.
+Oldest person to take the survey was `r round(max(image_recog$age),2)` years old.
+The age of the participants was not distributed evenly as it can be in the figure
+below (left). Hence, age is log scaled after which the distribution is
+relatively better. On all ANOVAs, the age was introduced as a variable in a log
+scale.
+```{r echo=FALSE}
+par(mfrow=c(1,2))
+
+hist(image_recog$age, main = "Age of Participants", xlab = "Age")
+
+hist(log(image_recog$age), main = "Age of Participants on log scale",
+     xlab = "Age log scaled")
+```
+
+The average time spent by the particpants per question was `r round(mean(image_recog$avg_time_spent_per_Q),2)` seconds (SD = `r round(sd(image_recog$avg_time_spent_per_Q),2)`) and ranged from `r round(min(image_recog$avg_time_spent_per_Q),2)` to `r round(max(image_recog$avg_time_spent_per_Q),2)` seconds.
+Same reasoning goes for the time taken as age. The variable is introduced on a log scale
+on all ANOVAs.
+```{r echo=FALSE}
+par(mfrow=c(1,2))
+
+hist(image_recog$avg_time_spent_per_Q, main = "Average time per Question",
+     xlab = "Time taken (s)")
+
+hist(log(image_recog$avg_time_spent_per_Q), main = "Average time log scaled",
+     xlab = "Time taken log scaled")
+```
+
+For task difficulty, the participants on average rated `r round(mean(image_recog$task_difficulty_chr_num),2)` with SD of `r round(sd(image_recog$task_difficulty_chr_num),2)`
+```{r echo = FALSE}
+image_recog$task_difficulty_chr <-
+  factor(image_recog$task_difficulty_chr,
+         levels(image_recog$task_difficulty_chr)[c(2,5,3,4,1)])
+
+
+# table
+tbl_task_difficulty_chr <- table(image_recog$task_difficulty_chr)
+tbl_task_difficulty_chr
+
+# graph
+ggplot(image_recog, aes(x=task_difficulty_chr)) + geom_bar() + facet_wrap(~Group) +
+  theme_bw(base_size = 18, base_family = "Times New Roman") +
+  theme(axis.text.x = element_text(angle = 90, hjust =1)) +
+  xlab("Task Difficulty Levels") + ylab("Count") + 
+  ylim(0,30)
+```
+
+
+```{r}
+par(mfrow=c(2,2))
+
+hist(image_recog$exact_match_answers_as_percent, 
+     main = "(a) Exact Match Accuracy", xlab = "No. of correct answers",
+     ylab = "No. of participants", xlim = c(0,1))
+
+hist(image_recog$synonym_answers_as_percent,
+     main = "(b) Synonym Accuracy", xlab = "No. of correct answers",
+     ylab = "No. of participants", xlim = c(0,1))
+
+hist(image_recog$present_answers_as_percent,
+     main = "(c) Present Accuracy", xlab = "No. of correct answers",
+     ylab = "No. of participants", xlim = c(0,1)) 
+
+hist(image_recog$category_answers_as_percent,
+     main = "(d) Category Accuracy", xlab = "No. of correct answers",
+     ylab = "No. of participants", xlim = c(0,1))
+
+par(mfrow=c(1,1))
+```
+
+Exact Match Accuracy ANOVA
+```{r echo=FALSE}
+#First Step. One way ANOVA. 
+#Looking at the effect of Group on Accuracy!
+
+exact_one_way_anova <- aov(exact_match_answers_as_percent ~ Group,
+                           data = image_recog)
+
+summary(exact_one_way_anova)
+
+eta_squared(exact_one_way_anova)
+```
+
+
+```{r}
+exact_block_anova <- aov(exact_match_answers_as_percent ~ Group + avg_conf +
+                           Task_difficulty_in_num + attn_check + 
+                           avg_time_spent_per_Q + male_num + college + log(age),
+                         data = image_recog)
+
+summary(exact_block_anova)
+
+eta_squared(exact_block_anova)
+```
+
+Exact Match Accuracy Post-Hoc Test
+```{r echo=FALSE}
+exact_models_set <- list(exact_one_way_anova)
+exact_model_names <- c("exact_one_way_anova")
+aictab(exact_models_set, modnames = exact_model_names)
+```
+
+Synonym Accuracy ANOVA
+```{r echo=FALSE}
+#First Step. One way ANOVA. 
+#Looking at the effect of Group on Accuracy!
+
+synonym_one_way_anova <- aov(synonym_answers_as_percent ~ Group,
+                             data = image_recog)
+
+summary(synonym_one_way_anova)
+
+eta_squared(synonym_one_way_anova)
+```
+
+
+```{r}
+synonym_block_anova <- aov(synonym_answers_as_percent ~ Group + avg_conf +
+                           Task_difficulty_in_num + attn_check + 
+                           avg_time_spent_per_Q + male_num + college + log(age),
+                         data = image_recog)
+
+summary(synonym_block_anova)
+
+eta_squared(synonym_block_anova)
+```
+
+Synonym Accuracy Post-Hoc Test
+```{r echo=FALSE}
+synonym_models_set <- list(synonym_one_way_anova)
+synonym_model_names <- c("synonym_one_way_anova")
+aictab(synonym_models_set, modnames = synonym_model_names)
+```
+
+
+
+```{r}
+present_block_anova <- aov(present_answers_as_percent ~ Group + avg_conf +
+                           Task_difficulty_in_num + attn_check + 
+                           avg_time_spent_per_Q + male_num + college + log(age),
+                         data = image_recog)
+
+summary(present_block_anova)
+
+eta_squared(present_block_anova)
+```
+
+
+
+Present Accuracy ANOVA
+```{r echo=FALSE}
+#First Step. One way ANOVA. 
+#Looking at the effect of Group on Accuracy!
+
+present_one_way_anova <- aov(present_answers_as_percent ~ Group,
+                             data = image_recog)
+
+summary(present_one_way_anova)
+
+eta_squared(present_one_way_anova)
+```
+
+present Accuracy Post-Hoc Test
+```{r echo=FALSE}
+present_models_set <- list(present_one_way_anova)
+present_model_names <- c("present_one_way_anova")
+aictab(present_models_set, modnames = present_model_names)
+```
+
+Category Accuracy ANOVA
+```{r echo=FALSE}
+#First Step. One way ANOVA. 
+#Looking at the effect of Group on Accuracy!
+
+category_one_way_anova <- aov(category_answers_as_percent ~ Group, 
+                              data = image_recog)
+summary(category_one_way_anova)
+
+eta_squared(category_one_way_anova)
+```
+
+
+
+```{r}
+category_block_anova <- aov(category_answers_as_percent ~ Group + avg_conf +
+                           Task_difficulty_in_num + attn_check + 
+                           avg_time_spent_per_Q + male_num + college + log(age),
+                         data = image_recog)
+
+summary(category_block_anova)
+
+eta_squared(category_block_anova)
+```
+
+
+category Accuracy Post-Hoc Test
+```{r echo=FALSE}
+category_models_set <- list(category_one_way_anova)
+category_model_names <- c("category_one_way_anova")
+aictab(category_models_set, modnames = category_model_names)
+```
+
+PLotting the QQ plots for all of the ANOVAs
+```{r echo=FALSE}
+par(mfrow=c(2,2))
+
+plot(exact_one_way_anova, which = 2) + title("(a) Exact Accuracy", line = 1.35)
+
+plot(synonym_one_way_anova, which = 2) +
+  title("(b) Synonym Accuracy", line = 1.35)
+
+plot(present_one_way_anova, which = 2) +
+  title("(c) Present Accuracy", line = 1.35)
+
+plot(category_one_way_anova, which = 2) +
+  title("(d) Category Accuracy", line = 1.35)
+
+par(mfrow=c(1,1))
+```
+
+```{r echo=FALSE}
+#Exact Match Accuracy Tukey Test
+exact_tukey_interaction <- TukeyHSD(exact_one_way_anova, which = "Group")
+exact_tukey_interaction
+
+#Synonym Accuracy Tukey Test
+synonym_tukey_interaction <- TukeyHSD(synonym_one_way_anova, which = "Group")
+synonym_tukey_interaction
+
+#Present Accuracy Tukey Test
+present_tukey_interaction <- TukeyHSD(present_one_way_anova, which = "Group")
+present_tukey_interaction
+
+#Category Accuracy Tukey Test
+category_tukey_interaction <- TukeyHSD(category_one_way_anova, which = "Group")
+category_tukey_interaction
+```
+
+
+```{r echo=FALSE}
+par(mfrow=c(2,2))
+
+plot(exact_tukey_interaction, las=1, yaxt= "none") + 
+  title("(a) Exact Accuracy", line = 0.35)
+axis(2, at=15:1, las =1)
+
+plot(synonym_tukey_interaction, las=1, yaxt= "none") + 
+  title("(b) Synonym Accuracy", line = 0.35)
+axis(2, at=15:1, las =1)
+
+plot(present_tukey_interaction, las=1, yaxt= "none") +
+  title("(c) Present Accuracy", line = 0.35)
+axis(2, at=15:1, las =1)
+plot(category_tukey_interaction, las=1, yaxt= "none") + 
+  title("(d) Category Accuracy", line = 0.35)
+axis(2, at=15:1, las =1)
+
+par(mfrow=c(1,1))
+```
+
+
+
+```{r }
+#Exact Match Accuracy rcorr tables.
+all_rcorr <- rcorr(as.matrix(image_recog[,c("exact_match_answers_as_percent",
+                                            "synonym_answers_as_percent",
+                                            "present_answers_as_percent",
+                                            "category_answers_as_percent",
+                                            "avg_conf", "One_AI_bar",
+                                            "One_AI_nobar","Five_AI_bar",
+                                            "Five_AI_nobar","Five_AI_ABC",
+                                            "college","age",
+                                            "Task_difficulty_in_num", 
+                                            "male_num", "avg_time_spent_per_Q",
+                                            "attn_check")]))
+
+all_rcorr
+```
+
+All accuracies Average Confidence ANOVA
+```{r echo=FALSE}
+one_way_anova_avg_conf <- aov(avg_conf ~ Group, data = image_recog)
+
+summary(one_way_anova_avg_conf)
+
+models_set_avg_conf <- list(one_way_anova_avg_conf)
+model_names_avg_conf <- c("one_way_anova_avg_conf")
+aictab(models_set_avg_conf, modnames = model_names_avg_conf)
+
+#Average Confidence Tukey Test
+tukey_interaction_avg_conf <- TukeyHSD(one_way_anova_avg_conf, which = "Group")
+plot(tukey_interaction_avg_conf, las=1)+ title("Avg Confidence", line = 0.35)
+```
+
+
+```{r}
+#One-way ANOVA Task Difficulty
+one_way_anova_task_difficulty <- aov(Task_difficulty_in_num ~ Group,
+                                     data = image_recog)
+
+summary(one_way_anova_task_difficulty)
+
+#Post-hoc test
+models_set_task_difficulty <- list(one_way_anova_task_difficulty)
+model_names_task_difficulty <- c("one_way_anova_task_difficulty")
+aictab(models_set_task_difficulty, modnames = model_names_task_difficulty)
+
+#Tukey HSD Interaction
+tukey_interaction_task_difficulty <- TukeyHSD(one_way_anova_task_difficulty,
+                                              which = "Group")
+
+tukey_interaction_task_difficulty
+
+#Plot of Tukey Interaction
+plot(tukey_interaction_task_difficulty, las=1)+ title("Task Difficulty",
+                                                      line = 0.35)
+```
+
+
+
+```{r}
+#One-way ANOVA Avergae time spent per image
+one_way_anova_avg_time_per_image <- aov(avg_time_spent_per_Q ~ Group,
+                                        data = image_recog)
+
+summary(one_way_anova_avg_time_per_image)
+
+#Post-hoc test
+models_set_avg_time_per_image <- list(one_way_anova_avg_time_per_image)
+model_names_avg_time_per_image <- c("one_way_anova_avg_time_per_image")
+aictab(models_set_avg_time_per_image, modnames = model_names_avg_time_per_image)
+
+#Tukey HSD Interaction
+tukey_interaction_avg_time_per_image <- 
+  TukeyHSD(one_way_anova_avg_time_per_image, which = "Group")
+
+tukey_interaction_avg_time_per_image
+
+#Plot of Tukey Interaction
+plot(tukey_interaction_avg_time_per_image, las=1, yaxt= "none") +
+  title("Average Time Spent Per Image", line = 0.35)
+axis(2, at=15:1, las =1)
+```
+
+
+```{r echo=FALSE}
+#Exact Match Accuracy - Accuracy vs Group plot with errorbars
+exact_conditions_summary <- image_recog %>%
+  group_by(Group) %>%
+  summarise(mean_answer = mean(exact_match_answers_as_percent, na.rm = TRUE),
+            sd_answer = sd(exact_match_answers_as_percent, na.rm = TRUE))
+
+#Synonym Accuracy - Accuracy vs Group plot with errorbars
+synonym_conditions_summary <- image_recog %>%
+  group_by(Group) %>%
+  summarise(mean_answer = mean(synonym_answers_as_percent, na.rm = TRUE),
+            sd_answer = sd(synonym_answers_as_percent, na.rm = TRUE))
+
+#Present Accuracy - Accuracy vs Group plot with errorbars
+present_conditions_summary <- image_recog %>%
+  group_by(Group) %>%
+  summarise(mean_answer = mean(present_answers_as_percent, na.rm = TRUE),
+            sd_answer = sd(present_answers_as_percent, na.rm = TRUE))
+
+#Category Accuracy - Accuracy vs Group plot with errorbars
+category_conditions_summary <- image_recog %>%
+  group_by(Group) %>%
+  summarise(mean_answer = mean(category_answers_as_percent, na.rm = TRUE),
+            sd_answer = sd(category_answers_as_percent, na.rm = TRUE))
+
+image_recog$Group <- factor(image_recog$Group, 
+                                        levels(image_recog$Group)[c(6,2,1,3,5,4)])
+
+
+exact_summ_plot <- ggplot(exact_conditions_summary, aes(y=mean_answer,
+                                                        x=Group)) + 
+  geom_bar(position="dodge", stat="identity", width = 0.5)+ 
+  geom_errorbar(aes(ymin= mean_answer - sd_answer, 
+                    ymax= mean_answer + sd_answer), width=.2) +
+  theme_bw(base_size = 18, base_family = "Times New Roman") + 
+  theme(axis.text.x = element_text(angle = 90, hjust =1)) +
+  xlab("Experimental Conditions") + ylab("Mean Performance") + 
+  ylim(0,1) + 
+  ggtitle("(a) Exact Match Accuracy")
+
+synonym_summ_plot <- ggplot(synonym_conditions_summary, aes(y=mean_answer,
+                                                            x=Group)) + 
+  geom_bar(position="dodge", stat="identity", width = 0.5)+ 
+  geom_errorbar(aes(ymin= mean_answer - sd_answer, 
+                    ymax= mean_answer + sd_answer), width=.2) +
+  theme_bw(base_size = 18, base_family = "Times New Roman") + 
+  theme(axis.text.x = element_text(angle = 90, hjust =1)) +
+  xlab("Experimental Conditions") + ylab("Mean Performance") + 
+  ylim(0,1) + 
+  ggtitle("(b) Synonym Accuracy")
+
+present_summ_plot <- ggplot(present_conditions_summary, aes(y=mean_answer,
+                                                            x=Group)) + 
+  geom_bar(position="dodge", stat="identity", width = 0.5)+ 
+  geom_errorbar(aes(ymin= mean_answer - sd_answer, 
+                    ymax= mean_answer + sd_answer), width=.2) +
+  theme_bw(base_size = 18, base_family = "Times New Roman") + 
+  theme(axis.text.x = element_text(angle = 90, hjust =1)) +
+  xlab("Experimental Conditions") + ylab("Mean Performance") + 
+  ylim(0,1) + 
+  ggtitle("(c) Present Accuracy")
+
+category_summ_plot <- ggplot(category_conditions_summary, aes(y=mean_answer,
+                                                              x=Group)) + 
+  geom_bar(position="dodge", stat="identity", width = 0.5)+ 
+  geom_errorbar(aes(ymin= mean_answer - sd_answer, 
+                    ymax= mean_answer + sd_answer), width=.2) +
+  theme_bw(base_size = 18, base_family = "Times New Roman") + 
+  theme(axis.text.x = element_text(angle = 90, hjust =1)) +
+  xlab("Experimental Conditions") + ylab("Mean Performance") + 
+  ylim(0,1) + 
+  ggtitle("(d) Category Accuracy")
+
+plot_grid(exact_summ_plot, synonym_summ_plot, present_summ_plot, category_summ_plot)
+```
+
+
+```{r}
+# Two-Way Anova
+# REF: https://rcompanion.org/rcompanion/d_08.html
+model_lm <- lm(exact_match_answers_as_percent ~ AI_1or5 + bar + AI_1or5:bar,
+               data = image_recog_AI1or5)
+
+summary(model_lm) # not significant in lm
+Anova(model_lm, type="II") # AI_1or5 sig in ANOVA
+anova(model_lm)
+
+# simple comparison of means
+by(image_recog_AI1or5$exact_match_answers_as_percent, 
+   image_recog_AI1or5$AI_1or5, function(x) {round(mean(x),2)})
+
+# simple comparison of standard deviation
+by(image_recog_AI1or5$exact_match_answers_as_percent, image_recog_AI1or5$AI_1or5,
+   function(x) {round(sd(x),4)})
+
+# Mean separations for main factor with lsmeans
+lsmeans = lsmeans::lsmeans
+leastsquare = lsmeans(model_lm, "AI_1or5", adjust="tukey")
+```
+
+AI_1or5 is marginally significant (right around the  p = .05 level). This
+suggests that there may be a significant difference between 1AI vs. 5AI
+(5AI is slightly higher at M = 0.50 vs. M = 0.47). The effect of bar is not
+significant, suggesting that there is no difference between including the bars
+or not. The interaction between number of recommendations and bars is also not
+significant.
+```{r}
+# Two-Way Anova
+# REF: https://rcompanion.org/rcompanion/d_08.html
+model_lm2 <- lm(synonym_answers_as_percent ~ AI_1or5 + bar + AI_1or5:bar,
+                data = image_recog_AI1or5)
+
+summary(model_lm2) # not significant in lm
+Anova(model_lm2, type="II") # AI_1or5 sig in ANOVA
+anova(model_lm2)
+
+# simple comparison of means
+by(image_recog_AI1or5$synonym_answers_as_percent, image_recog_AI1or5$AI_1or5,
+   function(x) {round(mean(x),2)})
+
+# simple comparison of standard deviation
+by(image_recog_AI1or5$synonym_answers_as_percent, image_recog_AI1or5$AI_1or5,
+   function(x) {round(sd(x),4)})
+
+# Mean separations for main factor with lsmeans
+lsmeans = lsmeans::lsmeans
+leastsquare2 = lsmeans(model_lm2, "AI_1or5", adjust="tukey")
+```
+
+
+
+```{r}
+# Two-Way Anova
+# REF: https://rcompanion.org/rcompanion/d_08.html
+model_lm3 <- lm(present_answers_as_percent ~ AI_1or5 + bar + AI_1or5:bar,
+                data = image_recog_AI1or5)
+
+summary(model_lm3) # not significant in lm
+Anova(model_lm3, type="II") # AI_1or5 sig in ANOVA
+anova(model_lm3)
+
+# simple comparison of means
+by(image_recog_AI1or5$present_answers_as_percent, image_recog_AI1or5$AI_1or5,
+   function(x) {round(mean(x),2)})
+
+# simple comparison of standard deviation
+by(image_recog_AI1or5$present_answers_as_percent, image_recog_AI1or5$AI_1or5,
+   function(x) {round(sd(x),4)})
+
+# Mean separations for main factor with lsmeans
+lsmeans = lsmeans::lsmeans
+leastsquare3 = lsmeans(model_lm3, "AI_1or5", adjust="tukey")
+```
+
+
+
+```{r}
+# Two-Way Anova
+# REF: https://rcompanion.org/rcompanion/d_08.html
+model_lm4 <- lm(category_answers_as_percent ~ AI_1or5 + bar + AI_1or5:bar,
+                data = image_recog_AI1or5)
+
+summary(model_lm4) # not significant in lm
+Anova(model_lm4, type="II") # AI_1or5 sig in ANOVA
+anova(model_lm4)
+
+# simple comparison of means
+by(image_recog_AI1or5$category_answers_as_percent, image_recog_AI1or5$AI_1or5,
+   function(x) {round(mean(x),2)})
+
+# simple comparison of standard deviation
+by(image_recog_AI1or5$category_answers_as_percent, image_recog_AI1or5$AI_1or5,
+   function(x) {round(sd(x),4)})
+
+# Mean separations for main factor with lsmeans
+lsmeans = lsmeans::lsmeans
+leastsquare4 = lsmeans(model_lm4, "AI_1or5", adjust="tukey")
+```
+
+1. It appears that the bar does not have an effect at all; irrespective of the definition of the accuracy. 
+2. AI_1or5 is marginally significant
+3. Overall, 5AI has a higher simple Mean compared to 1AI in all accuracies: (M = M of 5AI (M of 1AI))
+(M = 0.50(0.47), M = 0.61(0.57), M = 0.68(0.64), M = 0.79(0.75))
+4. The interaction between 1AI&5AI and Bar is also not significant in any of the accuracies.
+5. Since no interaction was signifcant, no one-way ANOVA for all of our factors is necessary.
+
+Since there is no effect of bar or the interaction of AI and bar, we can accept to NULL hypothesis.
+1. The means are the same for bar and no bar
+2. Since interaction shows no effect, it means, the performance of people in 1AI or 5AI does not depend on bars or viceversa.
+
+
+```{r}
+#Exact Match Accuracy - Accuracy vs Group plot with errorbars
+exact_conditions_summary2 <- image_recog_AI1or5 %>%
+  group_by(AI_1or5) %>%
+  summarise(mean_answer = mean(exact_match_answers_as_percent, na.rm = TRUE),
+            sd_answer = sd(exact_match_answers_as_percent, na.rm = TRUE))
+
+#Synonym Accuracy - Accuracy vs Group plot with errorbars
+synonym_conditions_summary2 <- image_recog_AI1or5 %>%
+  group_by(AI_1or5) %>%
+  summarise(mean_answer = mean(synonym_answers_as_percent, na.rm = TRUE),
+            sd_answer = sd(synonym_answers_as_percent, na.rm = TRUE))
+
+#Present Accuracy - Accuracy vs Group plot with errorbars
+present_conditions_summary2 <- image_recog_AI1or5 %>%
+  group_by(AI_1or5) %>%
+  summarise(mean_answer = mean(present_answers_as_percent, na.rm = TRUE),
+            sd_answer = sd(present_answers_as_percent, na.rm = TRUE))
+
+#Category Accuracy - Accuracy vs Group plot with errorbars
+category_conditions_summary2 <- image_recog_AI1or5 %>%
+  group_by(AI_1or5) %>%
+  summarise(mean_answer = mean(category_answers_as_percent, na.rm = TRUE),
+            sd_answer = sd(category_answers_as_percent, na.rm = TRUE))
+
+
+exact_summ_plot2 <- ggplot(exact_conditions_summary2, aes(y=mean_answer,
+                                                        x=AI_1or5)) + 
+  geom_bar(position="dodge", stat="identity", width = 0.5)+ 
+  geom_errorbar(aes(ymin= mean_answer - sd_answer, 
+                    ymax= mean_answer + sd_answer), width=.2) +
+  theme_bw(base_size = 18, base_family = "Times New Roman") + 
+  theme(axis.text.x = element_text(angle = 90, hjust =1)) +
+  xlab("Experimental Conditions") + ylab("Mean Performance") + 
+  ylim(0,1) + 
+  ggtitle("(a) Exact Match Accuracy")
+
+synonym_summ_plot2 <- ggplot(synonym_conditions_summary2, aes(y=mean_answer,
+                                                            x=AI_1or5)) + 
+  geom_bar(position="dodge", stat="identity", width = 0.5)+ 
+  geom_errorbar(aes(ymin= mean_answer - sd_answer, 
+                    ymax= mean_answer + sd_answer), width=.2) +
+  theme_bw(base_size = 18, base_family = "Times New Roman") + 
+  theme(axis.text.x = element_text(angle = 90, hjust =1)) +
+  xlab("Experimental Conditions") + ylab("Mean Performance") + 
+  ylim(0,1) + 
+  ggtitle("(b) Synonym Accuracy")
+
+present_summ_plot2 <- ggplot(present_conditions_summary2, aes(y=mean_answer,
+                                                            x=AI_1or5)) + 
+  geom_bar(position="dodge", stat="identity", width = 0.5)+ 
+  geom_errorbar(aes(ymin= mean_answer - sd_answer, 
+                    ymax= mean_answer + sd_answer), width=.2) +
+  theme_bw(base_size = 18, base_family = "Times New Roman") + 
+  theme(axis.text.x = element_text(angle = 90, hjust =1)) +
+  xlab("Experimental Conditions") + ylab("Mean Performance") + 
+  ylim(0,1) + 
+  ggtitle("(c) Present Accuracy")
+
+category_summ_plot2 <- ggplot(category_conditions_summary2, aes(y=mean_answer,
+                                                              x=AI_1or5)) + 
+  geom_bar(position="dodge", stat="identity", width = 0.5)+ 
+  geom_errorbar(aes(ymin= mean_answer - sd_answer, 
+                    ymax= mean_answer + sd_answer), width=.2) +
+  theme_bw(base_size = 18, base_family = "Times New Roman") + 
+  theme(axis.text.x = element_text(angle = 90, hjust =1)) +
+  xlab("Experimental Conditions") + ylab("Mean Performance") + 
+  ylim(0,1) + 
+  ggtitle("(d) Category Accuracy")
+
+plot_grid(exact_summ_plot2, synonym_summ_plot2, present_summ_plot2, category_summ_plot2)
+```
+
+

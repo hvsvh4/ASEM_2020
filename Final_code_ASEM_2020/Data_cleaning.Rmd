@@ -1,0 +1,645 @@
+---
+title: "Data Cleaning"
+author: "Hari VS"
+Date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  pdf_document: default
+---
+
+Notes from Canfield code review:
+* Use comments to explain what your code is doing
+* Use the white part of the R Notebook to create sections and explain what you
+  are doing 
+(see https://rstudio.com/wp-content/uploads/2015/02/rmarkdown-cheatsheet.pdf)
+
+***
+
+Purpose: This code cleans the raw Qualtrics output and organizes the data in
+three different structures:
+
+1. **data_person** where each row is a single person
+2. **data_image** where each row is a single image
+3. **data_person_image** where row is a single person for a single image and
+there are 24 rows per person
+
+### IMPORT DATA
+
+```{r}
+# Load libraries
+library(tidyverse)
+library(broom)
+library(Hmisc)
+library(ggimage)
+library(gridExtra)
+library(car)
+library(dplyr)
+library(lubridate)
+library(utils)
+```
+
+
+
+
+```{r}
+# import raw data from Qualtrics
+raw_data <- read_csv("Qualtrics_data_05.13.2020.csv")
+
+#copying data so originial is left untouched
+data_person <- raw_data 
+
+#Converting class of the timestamps
+data_person$StartDate <-  as_datetime(data_person$StartDate)
+
+#started collecting data on 5/1/20 at 2:39 PM
+data_person <- filter(data_person, StartDate >= #select cells
+                        as.POSIXct("2020-05-01 14:39:00", #that has timestamps past 2:39 PM on May 1st
+                                   tz = "UTC")) %>% #timestamps are in Mountrain TimeZone
+  filter(Finished == "True") #removing incomplete surveys
+
+#Removing unwanted columns
+data_person <- select(data_person, "StartDate","Duration (in seconds)", #Specifying column names
+                      "Finished", "ResponseId","Q6":"mTurkCode" ) #Select columns from Q6 to mTurkCode
+
+# remove unused factor levels
+data_person <- droplevels(data_person)
+
+# convert to tibble
+data_person <- as_tibble(data_person)
+
+#Removing columns that has NAs for all cells
+all_na <- function(x){
+  any(!is.na(x)) #anything is that not NA.
+#write the names of the columns.
+} 
+
+#Applying the all_na funtion to data_person tibble
+data_person <- data_person[, #chossing columns from the data frame
+                           which( #mentioning which columns
+                             unlist( #drop the one that follows lapply
+                               lapply(data_person,all_na)))]
+                               #lapply tells to apply all_na function
+
+#Removing more unwanted columns
+data_person <- data_person %>% 
+  select(-contains("Click")) #These columns are not needed
+#These columns recorded the first click and last click time (in seconds) for
+  #every stimuli. It also recorded click counts for all. 
+
+#Removing duplicate column
+data_person <- data_person %>% #Duplicate column that stores participant ID.
+  select(- "Q274") #Column named PROLIFIC_PID has same information.
+
+#Removing unwanted column
+data_person <- data_person %>% #No one had a time limit to answer
+  select(- c(TimeLimit)) #unwanted column
+
+#Removing unwanted column
+data_person <- data_person %>% #unwanted confidence information
+  select(- c(Q485_1)) #Howler monkey confidence rating.
+
+#Removing unwanted column
+data_person <- data_person %>% #No one had a time limit to answer
+  select(- c(`Q490_Page Submit`)) #unwanted column
+```
+
+
+### Renaming Columns
+
+```{r}
+#Renaming Consent Columns
+data_person <- data_person %>% 
+  rename( #renaming columns
+    Consent1_chr = Q6, #Original column name goes on the right.
+    Consent2_chr = Q8
+    )
+
+#Renaming Initial Attention Checks 
+data_person <- data_person %>%
+  rename(
+    Attn_check1_chr = Q467,
+    Attn_check2_chr = Q468,
+  )
+
+#Renaming demographics columns
+data_person <- data_person %>%
+  rename(
+    year_born = Q89,
+    education_chr = Q93,
+    gender_chr = Q91,
+    AI_trustworthy_chr = Q514,
+    task_difficulty_chr = Q87,
+    AI_help_count = Q269_1
+    )
+
+#Renaming Feedback column
+data_person <- data_person %>% 
+  rename(
+    Feedback = Q95) #Manual feedback entered by participants.
+```
+
+
+```{r}
+#Renaming columns corresponding to Time spent in each question
+data_person <- data_person %>%
+  rename(
+    sea_slug_time = `Q98_Page Submit`,
+    swimming_trunks_time = `Q363_Page Submit`,
+    megalith_time = `Q372_Page Submit`,
+    brown_bear_time = `Q477_Page Submit`,
+    nails_time = `Q520_Page Submit`,
+    chickpea_time = `Q640_Page Submit`,
+    goblet_time = `Q658_Page Submit`,
+    monitor_time = `Q667_Page Submit`,
+    spider_monkey_time = `Q676_Page Submit`, 
+    gazania_time = `Q685_Page Submit`,
+    marimba_time = `Q694_Page Submit`,
+    football_helmet_time = `Q739_Page Submit`,
+    madagascar_cat_time = `Q766_Page Submit`,
+    shrimp_time = `Q775_Page Submit`,
+    mite_time = `Q793_Page Submit`,
+    nightsnake_time = `Q811_Page Submit`,
+    basenji_time = `Q820_Page Submit`,
+    vacuum_time = `Q838_Page Submit`,
+    cherry_time = `Q856_Page Submit`,
+    ruffed_grouse_time = `Q865_Page Submit`,
+    metronome_time = `Q883_Page Submit`,
+    envelope_time = `Q910_Page Submit`,
+    logwood_time = `Q919_Page Submit`,
+    fragrant_orchid_time = `Q937_Page Submit`
+  )
+```
+
+
+```{r}
+#renaming columns that correspond to Stimuli names
+data_person <- data_person %>%
+  rename(
+    sea_slug_resp = Q97,
+    swimming_trunks_resp = Q370,
+    megalith_resp = Q379,
+    brown_bear_resp = Q484,
+    nails_resp = Q527,
+    chickpea_resp = Q647,
+    goblet_resp = Q665,
+    monitor_resp = Q674,
+    spider_monkey_resp = Q683,
+    gazania_resp = Q692,
+    marimba_resp = Q701,
+    football_helmet_resp = Q746,
+    madagascar_cat_resp = Q773,
+    shrimp_resp = Q782,
+    mite_resp = Q800,
+    nightsnake_resp = Q818,
+    basenji_resp = Q827,
+    vacuum_resp = Q845,
+    cherry_resp = Q863,
+    ruffed_grouse_resp = Q872,
+    metronome_resp = Q890,
+    envelope_resp = Q917,
+    logwood_resp = Q926,
+    fragrant_orchid_resp = Q944,
+    howler_monkey_resp = Q483
+)
+```
+
+
+```{r}
+#renaming columns corresponding to confidence ratings of each stimilus.
+
+data_person <- data_person %>%
+  rename(
+    sea_slug_conf = Q97_1,
+    swimming_trunks_conf = Q371,
+    megalith_conf = Q380,
+    brown_bear_conf = Q485,
+    nails_conf = Q528,
+    chickpea_conf = Q648,
+    goblet_conf = Q666,
+    monitor_conf = Q675,
+    spider_monkey_conf = Q684,
+    gazania_conf = Q693,
+    marimba_conf = Q702,
+    football_helmet_conf = Q747,
+    madagascar_cat_conf = Q774,
+    shrimp_conf = Q783,
+    mite_conf = Q801,
+    nightsnake_conf = Q819,
+    basenji_conf = Q828,
+    vacuum_conf = Q846,
+    cherry_conf = Q864,
+    ruffed_grouse_conf = Q873,
+    metronome_conf = Q891,
+    envelope_conf = Q918,
+    logwood_conf = Q927,
+    fragrant_orchid_conf = Q945,
+  )
+```
+
+
+```{r}
+#Reodering columns for ease of analysis
+data_person <- data_person[ c("AI_trustworthy_chr",
+  "task_difficulty_chr","AI_help_count", "Feedback",
+  "StartDate","Duration (in seconds)","Finished", "ResponseId",
+  "PROLIFIC_PID", "mTurkCode","year_born","gender_chr","education_chr","Group",
+  "Consent1_chr","Consent2_chr","Attn_check1_chr","Attn_check2_chr",
+  "sea_slug_resp", "swimming_trunks_resp", "megalith_resp", 
+  "brown_bear_resp", "nails_resp", "chickpea_resp", "goblet_resp",
+  "monitor_resp", "spider_monkey_resp", "gazania_resp", "marimba_resp",
+  "football_helmet_resp", "madagascar_cat_resp", "shrimp_resp",
+  "mite_resp", "nightsnake_resp", "basenji_resp", "vacuum_resp",
+  "cherry_resp", "ruffed_grouse_resp", "metronome_resp", "envelope_resp",
+  "logwood_resp", "fragrant_orchid_resp", "howler_monkey_resp",
+  "sea_slug_conf","swimming_trunks_conf","megalith_conf","brown_bear_conf",
+  "nails_conf","chickpea_conf","goblet_conf","monitor_conf","spider_monkey_conf",
+  "gazania_conf","marimba_conf","football_helmet_conf","madagascar_cat_conf","shrimp_conf",
+  "mite_conf","nightsnake_conf","basenji_conf","vacuum_conf","cherry_conf",
+  "ruffed_grouse_conf","metronome_conf","envelope_conf","logwood_conf",
+  "fragrant_orchid_conf","sea_slug_time",
+  "swimming_trunks_time", "megalith_time","brown_bear_time", "nails_time",
+  "chickpea_time", "goblet_time","monitor_time", "spider_monkey_time",
+  "gazania_time","marimba_time", "football_helmet_time", "madagascar_cat_time",
+  "shrimp_time", "mite_time", "nightsnake_time", "basenji_time","vacuum_time",
+  "cherry_time", "ruffed_grouse_time","metronome_time", "envelope_time",
+  "logwood_time","fragrant_orchid_time")]
+```
+
+
+
+
+### DEMOGRAPHICS
+
+Explain what corrections you made to the data and why
+Hardcoding like this is dangerous - it's easy for the data to get messed up. It's better to pull based on the actual values. See code below.
+
+
+```{r}
+#AGE
+#convert to numeric
+data_person$year_born <- as.numeric(data_person$year_born)
+
+# corrected typos in data
+data_person$year_born[data_person$year_born == 83] <- 1983 # said 83
+data_person$year_born[data_person$year_born == 193] <- 1993 # said 193
+
+# some participants reported their age instead of year born
+data_person$year_born <- ifelse(data_person$year_born < 1000, # if value < 1000
+                                2020 - data_person$year_born, # subtract from 2020
+                                data_person$year_born) # otherwise, leave it alone
+
+# calculate age
+data_person$age <- 2020 - data_person$year_born #numeric class
+```
+Cleaned the responses given by the participants when asked "What year were you
+born?". Some of them gave their age instead of the year. Some responsed with 
+text which are replaced with NAs.
+
+
+
+```{r}
+# EDUCATION
+data_person$college <- case_when(data_person$education_chr == "4 year degree" ~ 1,
+                              data_person$education_chr == "Professional degree" ~ 1,
+                              data_person$education_chr == "Doctorate" ~ 1,
+                              data_person$education_chr == "2 year degree" ~ 0,
+                              data_person$education_chr == "Some college" ~ 0,
+                              data_person$education_chr == "High School" ~ 0)
+
+# gender dummy
+data_person$male_num <- ifelse(data_person$gender_chr == "Male",1,0)
+```
+Participants chose one of six options for their education. To numerically 
+record education, participants who graduated at least with Bachelors were 
+given one (1). Zero (0) was assigned to participants who do not have a 
+four-year college degree or more.
+
+
+### EXPERIMENTAL MANIPULATION
+
+
+```{r}
+# AI TRUST
+# numeric version
+data_person$AI_trustworthy_in_num <- case_when( 
+  #case_when: if response is equal to "x", assign "y"
+  data_person$AI_trustworthy_chr == "Very untrustworthy" ~ 1,
+  data_person$AI_trustworthy_chr == "Somewhat untrustworthy" ~ 2,
+  data_person$AI_trustworthy_chr == "I don't know" ~ 3,
+  data_person$AI_trustworthy_chr == "Somewhat trustworthy" ~ 4,
+  data_person$AI_trustworthy_chr == "Very trustworthy" ~ 5
+)
+
+# TASK DIFFICULTY
+# numeric version
+data_person$Task_difficulty_in_num <- case_when(
+  #case_when: if response is equal to "x", assign "y"
+  data_person$task_difficulty_chr == "Extremely easy" ~ 1,
+  data_person$task_difficulty_chr == "Somewhat easy" ~ 2,
+  data_person$task_difficulty_chr == "I don't know" ~ 3,
+  data_person$task_difficulty_chr == "Somewhat difficult" ~ 4,
+  data_person$task_difficulty_chr == "Extremely difficult" ~ 5
+)
+
+# AI HELP
+#converting class to numeric
+data_person$AI_help_count <- as.numeric(data_person$AI_help_count)
+
+data_person$AI_help_percent <- data_person$AI_help_count/max(data_person$AI_help_count, na.rm=TRUE)
+```
+Participants were asked questions at the end with regards to the survey.
+AI TRUSTWORTHY shows how people felt about AI's recommendations.
+Task DIFFICULTY indicated how people felt above the whole survey.
+AI HELP indicates how many times the AI was helpful with it's recommendations.
+All three questions were categorical (i.e. people chose one of the options)
+
+
+```{r}
+# CONDITIONS
+# dummy variables
+data_person$One_AI_bar <- ifelse(data_person$Group == "1AI_bar", 1, 0)
+data_person$One_AI_nobar <- ifelse(data_person$Group == "1AI_nobar", 1, 0)
+data_person$Five_AI_bar <- ifelse(data_person$Group == "5AI_bar",1, 0)
+data_person$Five_AI_nobar <- ifelse(data_person$Group == "5AI_nobar",1, 0)
+data_person$Five_AI_ABC <- ifelse(data_person$Group == "5AI_ABC",1,0)
+data_person$Control <- ifelse(data_person$Group == "Control",1,0)
+#If Participants were in Control Group, assign 1, else 0.
+
+# summary dummy variables
+data_person$AI <- ifelse(data_person$Group != "Control", 1, 0)
+#Control Group did not receive AI help. If Partcipants were not in Control
+#group, assign 1, else 0.
+data_person$One_AI <- ifelse(data_person$Group == "1AI_bar", 1, 
+                             ifelse(data_person$Group == "1AI_nobar",1,0))
+#If Participants received only one AI recommendation, assign 1, esle 0.
+
+data_person$Five_AI <- ifelse(data_person$Group == "5AI_bar", 1, 
+                             ifelse(data_person$Group == "5AI_nobar",1,
+                                    ifelse(data_person$Group == "5AI_ABC",1,0)))
+#If Participants received five AI recommendations, assign 1, esle 0.
+
+data_person$bar <- ifelse(data_person$Group == "1AI_bar", 1, 
+                             ifelse(data_person$Group == "5AI_bar",1,0))
+#If participants received confidence bars for the recommendatio from AI, 
+#assign 1, else 0
+
+data_person$nobar <- ifelse(data_person$Group == "1AI_nobar", 1, 
+                             ifelse(data_person$Group == "5AI_nobar",1,
+                                    ifelse(data_person$Group == "5AI_ABC",1,0)))
+#If participants did not receieve confidence bars for the recommendation from AI
+#assign 1, else 0.
+```
+Participants of the survey were randomly placed on one of six experimental
+conditions mentioned above. Above chunk was used to represent them in dummy
+varibales for ease of analysis. 
+
+
+
+### STIMULI
+
+Answers were manually coded to determine the category of correctness
+
+```{r}
+# the coding is included in a separate R file
+source("Stimuli_response_coding.R")
+```
+
+```{r}
+#ATTN CHECK
+# individual attention checks
+data_person$attn_check1_num <- 
+  ifelse(data_person$Attn_check1_chr == "Howler Monkey",1, 0)
+data_person$attn_check2_num <- 
+  ifelse(data_person$Attn_check2_chr == "Be Specific",1, 0)
+data_person$attn_check3_num <- 
+  ifelse(data_person$howler_monkey == "correct",1, 0)
+
+# sum
+data_person$attn_check_sum <- rowSums(data_person %>%
+                                        select(attn_check1_num:attn_check3_num))
+#One column to represent how many of the three attention checks did the
+#participant respond to correctly.
+
+# binary indicator
+data_person$attn_check <- 
+  ifelse(data_person$attn_check1_num == 1 &
+           data_person$attn_check2_num == 1 &
+           data_person$attn_check3_num == 1,1, 0)
+#If the participant responded to all three questions correctly,assign 1,else 0
+```
+Participants of the survey were asked a sum of three attnetion checks.
+First two attention checks were in the beginning of the survey. They were given
+a categorical question. Last question was text input. Participant had to type
+the answer manually. 
+
+
+```{r}
+# CONFIDENCE
+
+#creating a function to replace chr as numerics.
+#representing confidence in 0-1 scale because all other varibales are
+#also represented in terms of 0s and 1s.
+confidence_to_num <- function(x){
+case_when(  
+  #case_when: if response is equal to "x", assign "y"
+  x == "0% Confident" ~ 0,
+  x == "20% Confident" ~ .2,
+  x == "40% Confident" ~ .4,
+  x == "60% Confident" ~ .6,
+  x == "80% Confident" ~ .8,
+  x ==  "100% Confident" ~ 1)}
+
+data_person <- data_person %>% #choosing tibble
+  mutate_at(.vars = vars(sea_slug_conf: fragrant_orchid_conf), 
+            #.vars - mentioning the column names to mutate
+            .funs = funs(confidence_to_num)) #applying the function
+
+data_person$avg_conf <- rowMeans(data_person %>%
+                                   select(sea_slug_conf:fragrant_orchid_conf))
+```
+
+
+
+```{r}
+# TIME
+#converting them to numeric
+time_chr_to_num <- function(x){
+  as.numeric(x)
+}
+
+data_person <- data_person %>% #choosing tibble
+  mutate_at(.vars = vars(sea_slug_time: fragrant_orchid_time), 
+            #.vars - mentioning the column names to mutate
+            .funs = funs(time_chr_to_num)) #applying the function
+
+#average time per image
+data_person$avg_time_spent_per_Q <- 
+rowMeans(data_person %>%
+           select(sea_slug_time:fragrant_orchid_time))
+```
+
+The performance measures are below.
+
+```{r}
+#Creating a function for exact match columns.
+exact_match_answer_to_num <- function(x){
+  ifelse(x == "correct",1, 0) 
+  #if response was categorized as "correct", assign 1, else 0.
+}
+
+#Mutating new columns to the tibble for exact match columns
+data_person <- data_person %>% #choosing tibble
+  mutate_at(.vars = vars(sea_slug: fragrant_orchid), 
+            #.vars - mentioning the column names to mutate
+            .funs = funs(`exact_match` = exact_match_answer_to_num,))
+#.funs, letting it know to add new columns instead of replacing the values in
+#the same column. It is achieved by setting `insert new name here` = function.
+
+#Creating a function for synonym columns.
+synonym_answer_to_num <- function(x){
+  ifelse(x == "correct",1, ifelse(x == "synonym", 1, 0))
+  #if response was categorized as "correct" or "synonym", assign 1, else 0.
+}
+
+#Mutating new columns to the tibble for synonym columns
+data_person <- data_person %>%
+  mutate_at(.vars = vars(sea_slug: fragrant_orchid),
+            .funs = funs(`synonym` = synonym_answer_to_num,))
+
+#Creating a function for present columns.
+present_answer_to_num <- function(x){
+  ifelse(x == "correct",1, ifelse(x == "synonym", 1, ifelse(x == "present", 1, 0)))
+  #if response was categorized as "correct" or "synonym" or "present",
+  #assign 1, else 0.
+}
+
+#Mutating new columns to the tibble for present columns
+data_person <- data_person %>%
+  mutate_at(.vars = vars(sea_slug: fragrant_orchid),
+            .funs = funs(`present` = present_answer_to_num,))
+
+#Creating a function for category columns.
+category_answer_to_num <- function(x){
+  ifelse(x == "correct",1, 
+         ifelse(x == "synonym", 1, 
+                ifelse(x == "present", 1, 
+                       ifelse(x == "category", 1,  0))))
+  #if response was categorized as "correct" or "synonym" or "present"
+  #or "category", assign 1, else 0.
+}
+
+#Mutating new columns to the tibble for category columns
+data_person <- data_person %>%
+  mutate_at(.vars = vars(sea_slug: fragrant_orchid),
+            .funs = funs(`category` = category_answer_to_num,))
+```
+
+
+
+```{r}
+#Summing the number of correct answers every participant got.
+#in each definition of accuracy
+
+#exact match accuracy sum
+data_person$exact_match_answers_sum <- 
+  rowSums(data_person %>%
+            select(sea_slug_exact_match:fragrant_orchid_exact_match), na.rm = TRUE)
+
+#synonym_accuracy_sum
+data_person$synonym_answers_sum <- 
+  rowSums(data_person %>%
+            select(sea_slug_synonym:fragrant_orchid_synonym), na.rm = TRUE)
+
+#Present_accuracy_sum
+data_person$present_answers_sum <- 
+  rowSums(data_person%>%
+           select(sea_slug_present:fragrant_orchid_present), na.rm = TRUE)
+data_person$category_answers_sum <- 
+  rowSums(data_person %>%
+            select(sea_slug_category:fragrant_orchid_category), na.rm = TRUE)
+```
+
+
+```{r include=FALSE}
+#Exact Match Accuracy
+data_person$exact_match_answers_as_percent <- data_person$exact_match_answers_sum/24
+
+#Synonym Accuracy
+data_person$synonym_answers_as_percent <- data_person$synonym_answers_sum/24
+
+#Present Accuracy
+data_person$present_answers_as_percent <- data_person$present_answers_sum/24
+
+#Category Accuracy
+data_person$category_answers_as_percent <- data_person$category_answers_sum/24
+```
+
+
+```{r}
+target <- c("1AI_nobar","1AI_bar","5AI_nobar","5AI_bar")
+image_recog_AI1or5 <- data_person %>%
+  filter(Group %in% target) %>%
+  mutate(AI_1or5 = as_factor(case_when(Group == "1AI_nobar" ~ "1AI",
+                             Group == "1AI_bar" ~ "1AI",
+                             Group == "5AI_nobar" ~ "5AI",
+                             Group == "5AI_bar" ~ "5AI"))) 
+```
+
+
+```{r}
+#Reshaping row and columns
+#Every row will be an image, each column will be a participant
+data_image <- as.data.frame(t(data_person))
+```
+
+
+```{r}
+#3 data_image_person - every row is an image for every participant.
+data_image_person <- cbind(data_person %>%
+        select(1:18,92:108,134:140,237:240), #selecting these columns so they remain untouched
+                           stack(data_person %>%
+                                   select(sea_slug_resp:fragrant_orchid_resp)), 
+                           stack(data_person %>%
+                                   select(sea_slug_conf:fragrant_orchid_conf)),
+                           stack(data_person %>%
+                                   select(sea_slug_time:fragrant_orchid_time)),
+                           stack(data_person %>%
+                                   select(sea_slug:fragrant_orchid)),
+                           stack(data_person %>%
+                                   select(sea_slug_exact_match:fragrant_orchid_exact_match)),
+                           stack(data_person %>%
+                                   select(sea_slug_exact_match:fragrant_orchid_exact_match)),
+                           stack(data_person %>%
+                                   select(sea_slug_synonym:fragrant_orchid_synonym)),
+                           stack(data_person %>%
+                                   select(sea_slug_present:fragrant_orchid_present)),
+                           stack(data_person %>%
+                                   select(sea_slug_category:fragrant_orchid_category)))
+
+colnames(data_image_person)[47:62] <- c("response","image","conf_resp",
+                                        "conf_name", "time_taken", "time_name",
+                                        "image_accuracy", "image_name1",
+                                        "exact_match","image_name2",
+                                        "synonym","image_name3",
+                                        "present","image_name4",
+                                        "category","image_name5")
+#pipe the enire thing.
+
+data_image_person <- data_image_person %>% 
+  select(-contains("name"))
+```
+
+# WRITE FILES
+We want to create 3 files where the data are organized in the 3 different ways. 
+The ASEM paper only uses data_person.
+```{r}
+#Writing Data Person file. Each row is a participant.Each column is an image.
+write.csv(data_person,file="Data_cleaned_person.csv") #1 data_person version
+write.csv(data_image, file = "data_cleaned_image.csv") #2 data_image version
+write.csv(data_image_person, file = "data_cleaned_image_person.csv") #3 data_image_person version
+```
+
+
+
+
+
+
