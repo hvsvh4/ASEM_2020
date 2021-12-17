@@ -1,26 +1,21 @@
+# Rcode description
 IMPORTANT: Please read till the end.
-
-
-# ASEM_2020
 Rcode for study presented at the American Society for Engineering Management 2020 conference.
-#####
 
 
-#About the project
+### About the project
 A between-subjects experiment to find the effects of AI recommendations.
 The experiment used online participants.
 Task was to identify the subject shown in an image which AI help.
 Participants were asked to identify every image with the help of AI recommendations.
 We analyzed the effects of varying levels of AI recommendations on user performance.
-#####
 
 
-#ASEM_106_submit.docx
+### ASEM_106_submit.docx
 Final peer-reviewed article published at the conference.
-#####
 
 
-#Final_code_ASEM_2020
+### Final_code_ASEM_2020
 Includes all the datasets and RStudio files used to analyze the data.
 Download this entire folder and simply open the RStudio project.
 
